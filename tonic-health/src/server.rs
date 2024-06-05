@@ -1,6 +1,6 @@
 //! Contains all healthcheck based server utilities.
 
-use crate::pb::health_server::{Health, HealthServer};
+use crate::pb::health_server::Health;
 use crate::pb::{HealthCheckRequest, HealthCheckResponse};
 use crate::ServingStatus;
 use std::collections::HashMap;
@@ -20,12 +20,12 @@ use tonic::{Request, Response, Status};
 /// A `HealthServer` is a Tonic gRPC server for the `grpc.health.v1.Health`,
 /// which can be added to a Tonic runtime using `add_service` on the runtime
 /// builder.
-pub fn health_reporter() -> (HealthReporter, HealthServer<impl Health>) {
+pub fn health_reporter() -> (HealthReporter, HealthService) {
     let reporter = HealthReporter::new();
     let service = HealthService::new(reporter.statuses.clone());
-    let server = HealthServer::new(service);
+    //let server = HealthServer::new(service);
 
-    (reporter, server)
+    (reporter, service)
 }
 
 type StatusPair = (watch::Sender<ServingStatus>, watch::Receiver<ServingStatus>);
@@ -104,7 +104,7 @@ impl HealthReporter {
 }
 
 /// A service providing implementations of gRPC health checking protocol.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct HealthService {
     statuses: Arc<RwLock<HashMap<String, StatusPair>>>,
 }
