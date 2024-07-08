@@ -3,6 +3,7 @@ use tonic::{transport::Server, Request, Response, Status};
 use hello_world::greeter_server::{Greeter, GreeterServer};
 use hello_world::{HelloReply, HelloRequest};
 use std::time::Duration;
+use tonic_health::pb::health_server::HealthServer;
 use tonic_health::server::HealthReporter;
 
 pub mod hello_world {
@@ -58,7 +59,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("HealthServer + GreeterServer listening on {}", addr);
 
     Server::builder()
-        .add_service(health_service)
+        .add_service(HealthServer::new(health_service))
         .add_service(GreeterServer::new(greeter))
         .serve(addr)
         .await?;

@@ -52,7 +52,7 @@ where
             match select(&mut incoming, &mut tasks).await {
                 SelectOutput::Incoming(stream) => {
                     if let Some(tls) = &server.tls {
-                        let tls = tls.clone();
+                        let tls = tls.acceptor();
                         tasks.spawn(async move {
                             let io = tls.accept(stream).await?;
                             Ok(ServerIo::new_tls_io(io))

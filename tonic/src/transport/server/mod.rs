@@ -14,13 +14,13 @@ pub use super::service::RoutesBuilder;
 
 pub use conn::{Connected, TcpConnectInfo};
 #[cfg(feature = "tls")]
-pub use tls::ServerTlsConfig;
+pub use tls::{ServerTlsConfig, TlsConfigProvider};
 
 #[cfg(feature = "tls")]
 pub use conn::TlsConnectInfo;
 
 #[cfg(feature = "tls")]
-use super::service::TlsAcceptor;
+use super::service::{DynamicTlsAcceptor, TlsAcceptorWrapper};
 
 #[cfg(unix)]
 pub use unix::UdsConnectInfo;
@@ -83,7 +83,7 @@ pub struct Server<L = Identity> {
     concurrency_limit: Option<usize>,
     timeout: Option<Duration>,
     #[cfg(feature = "tls")]
-    tls: Option<TlsAcceptor>,
+    tls: Option<TlsAcceptorWrapper>,
     init_stream_window_size: Option<u32>,
     init_connection_window_size: Option<u32>,
     max_concurrent_streams: Option<u32>,
@@ -145,12 +145,30 @@ impl Server {
 }
 
 impl<L> Server<L> {
-    /// Configure TLS for this server.
+    /// Configure static TLS for this server.
     #[cfg(feature = "tls")]
     #[cfg_attr(docsrs, doc(cfg(feature = "tls")))]
     pub fn tls_config(self, tls_config: ServerTlsConfig) -> Result<Self, Error> {
         Ok(Server {
-            tls: Some(tls_config.tls_acceptor().map_err(Error::from_source)?),
+            tls: Some(TlsAcceptorWrapper::Static(
+                tls_config.tls_acceptor().map_err(Error::from_source)?,
+            )),
+            ..self
+        })
+    }
+
+    /// Configure dynamic TLS for this server.
+    #[cfg(feature = "tls")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "tls")))]
+    pub fn with_tls_provider(self, provider: Arc<dyn TlsConfigProvider>) -> Result<Self, Error> {
+        let init_config = provider
+            .fetch()
+            .ok_or(Error::from_source("initial tls config should not be none."))?;
+        let acceptor = TlsAcceptorWrapper::Dynamic(
+            DynamicTlsAcceptor::new(init_config, provider).map_err(Error::from_source)?,
+        );
+        Ok(Server {
+            tls: Some(acceptor),
             ..self
         })
     }

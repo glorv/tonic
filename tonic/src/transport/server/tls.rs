@@ -65,3 +65,14 @@ impl ServerTlsConfig {
         )
     }
 }
+
+/// TlsConfigProvider provides tls config dynamically.
+pub trait TlsConfigProvider: Send + Sync + 'static {
+    /// Retrieves updated tls configurations.
+    ///
+    /// The method will be called during server initialization and every time a new
+    /// connection is about to be accepted. When returning `None`, gRPC
+    /// will continue to use the previous certificates returned by the method. If no
+    /// valid credentials is returned during initialization, the server will fail to start.
+    fn fetch(&self) -> Option<ServerTlsConfig>;
+}

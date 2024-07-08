@@ -1,6 +1,7 @@
 use std::{
+    fmt,
     io::Cursor,
-    {fmt, sync::Arc},
+    sync::{Arc, RwLock},
 };
 
 use rustls_pki_types::{CertificateDer, PrivateKeyDer, ServerName};
@@ -12,7 +13,7 @@ use tokio_rustls::{
 
 use super::io::BoxedIo;
 use crate::transport::{
-    server::{Connected, TlsStream},
+    server::{Connected, ServerTlsConfig, TlsConfigProvider, TlsStream},
     Certificate, Identity,
 };
 
@@ -182,4 +183,57 @@ fn add_certs_from_pem(
     }
 
     Ok(())
+}
+
+pub(crate) struct DynamicTlsAcceptor {
+    current: RwLock<TlsAcceptor>,
+    provider: Arc<dyn TlsConfigProvider>,
+}
+
+impl DynamicTlsAcceptor {
+    pub(crate) fn new(
+        init_config: ServerTlsConfig,
+        provider: Arc<dyn TlsConfigProvider>,
+    ) -> Result<Self, crate::Error> {
+        let acceptor = init_config.tls_acceptor()?;
+        Ok(Self {
+            current: RwLock::new(acceptor),
+            provider,
+        })
+    }
+
+    fn acceptor(&self) -> TlsAcceptor {
+        if let Some(cfg) = self.provider.fetch() {
+            if let Ok(acceptor) = cfg.tls_acceptor() {
+                *self.current.write().unwrap() = acceptor.clone();
+                return acceptor;
+            }
+        }
+        self.current.read().unwrap().clone()
+    }
+}
+
+impl Clone for DynamicTlsAcceptor {
+    fn clone(&self) -> Self {
+        let acceptor = self.current.read().unwrap().clone();
+        Self {
+            current: RwLock::new(acceptor),
+            provider: self.provider.clone(),
+        }
+    }
+}
+
+#[derive(Clone)]
+pub(crate) enum TlsAcceptorWrapper {
+    Static(TlsAcceptor),
+    Dynamic(DynamicTlsAcceptor),
+}
+
+impl TlsAcceptorWrapper {
+    pub fn acceptor(&self) -> TlsAcceptor {
+        match self {
+            Self::Static(t) => t.clone(),
+            Self::Dynamic(d) => d.acceptor(),
+        }
+    }
 }
